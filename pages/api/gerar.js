@@ -49,7 +49,7 @@ export default async function handler(req, res) {
   // Gerar figurinhas com IA
   try {
     const message = await anthropic.messages.create({
-      model: 'claude-opus-4-5',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 1024,
       messages: [{
         role: 'user',
@@ -67,15 +67,25 @@ Responda APENAS com JSON, sem markdown:
     // Registrar uso diário (plano free)
     if (plano === 'free' || !planoAtivo) {
       const hoje = new Date().toISOString().slice(0, 10)
-      await db.from('uso_diario').upsert({
-        user_id: user.id,
-        data: hoje,
-        quantidade: 1
-      }, { onConflict: 'user_id,data', ignoreDuplicates: false })
-        .eq('user_id', user.id).eq('data', hoje)
 
-      // fallback insert/update manual
-      await db.rpc('incrementar_uso', { uid: user.id, hoje })
+      const { data: usoExiste } = await db
+        .from('uso_diario')
+        .select('id, quantidade')
+        .eq('user_id', user.id)
+        .eq('data', hoje)
+        .single()
+
+      if (usoExiste) {
+        await db
+          .from('uso_diario')
+          .update({ quantidade: (usoExiste.quantidade || 0) + 1 })
+          .eq('user_id', user.id)
+          .eq('data', hoje)
+      } else {
+        await db
+          .from('uso_diario')
+          .insert({ user_id: user.id, data: hoje, quantidade: 1 })
+      }
     }
 
     // Salvar no histórico
